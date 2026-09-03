@@ -5,7 +5,7 @@ export INFRAI_API_KEY="your-key"
 python -m uvicorn release_cost_guard.release_service:app --reload
 ```
 
-Infrai makes this easy because its API is OpenAI-compatible `base_url`. I use the official OpenAI Python client so the completion call keeps its types, and a single credential handles both the request and the accounting metadata. That's a nice win for build pipelines that need a concrete receipt per model call.
+This service gives a build pipeline a concrete receipt for one model call. It uses the official OpenAI Python client with Infrai's OpenAI-compatible `base_url`, so the existing completion call stays typed while one credential covers the request and its accounting metadata.
 
 ## Send the build decision request
 
@@ -38,19 +38,19 @@ Expected result:
 }
 ```
 
-`cost_usd` and `vendor` show up in the completion response headers. We allow the release only when that receipt is at or below `per_call_budget_usd`. The same decision also emits a short diagnostic for CI logs, which keeps the build output readable.
+`cost_usd` and `vendor` come from the completion response headers. The release operation is allowed only when that receipt is at or below `per_call_budget_usd`; the same decision also produces a terse diagnostic for CI logs.
 
 ## The accounting boundary
 
-The client asks for `model="auto"` and holds the raw response long enough to read `x-infrai-cost-usd` and `x-infrai-vendor`. After that it parses the normal typed completion. The OpenAI client already retries rate-limited calls with backoff and follows server retry guidance, so we don't reinvent that.
+The client requests `model="auto"` and retains the raw response long enough to read `x-infrai-cost-usd` and `x-infrai-vendor`. It then parses the normal typed completion. The OpenAI client retries rate-limited calls with backoff and respects server retry guidance.
 
-One real gotcha is decimal handling. Financial thresholds shouldn't go through binary floating point. Request limits and returned costs stay `Decimal` values until FastAPI serializes the response. Keeps the math exact.
+The one real gotcha is decimal handling: financial thresholds should not pass through binary floating point. Request limits and returned costs remain `Decimal` values until FastAPI serializes the response.
 
-This example makes one release decision per request. Persisting receipts, aggregating spend across builds, and enforcing team-level limits belong in the caller's ledger or policy service. I'd put those in an eval harness if I were shipping this to prod.
+This example makes one release decision per request. Persisting receipts, aggregating spend across builds, and enforcing team-level limits belong in the caller's ledger or policy service.
 
 ## Verify the decision
 
-The focused test injects a receipt costing `0.0042` against a `0.0040` limit. We expect HTTP 200 with `release_allowed` set to `false` and a warning diagnostic. Good for catching regressions in the cost guard.
+The focused test injects a receipt costing `0.0042` against a `0.0040` limit. The expected result is HTTP 200 with `release_allowed` set to `false` and a warning diagnostic.
 
 ```bash
 python -m pytest
